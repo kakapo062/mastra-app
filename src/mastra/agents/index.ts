@@ -1,42 +1,99 @@
-import { openai } from '@ai-sdk/openai';
-import { anthropic, openRouter } from '../models';
-import { Agent } from '@mastra/core/agent';
-import { weatherTool } from '../tools';
+import { Agent } from "@mastra/core/agent";
+import { Memory } from "@mastra/memory";
+import { LibSQLStore } from "@mastra/core/storage/libsql";
+import { LibSQLVector } from "@mastra/core/vector/libsql";
+import {
+    cloneRepositoryTool,
+    readmeAnalyzerTool,
+    tokeiAnalyzerTool,
+    treeAnalyzerTool,
+    fileProcessorTool,
+    vectorQueryTool,
+    saveCheatsheetTool,
+    gitDiffTool,
+} from "../tools";
+import { claude } from "../models";
+import { createAnthropic } from "@ai-sdk/anthropic";
+export { codeReviewAgent } from "./codeReviewAgent";
 
-// export const weatherAgent = new Agent({
-//   name: 'Weather Agent',
-//   instructions: `
-//       You are a helpful weather assistant that provides accurate weather information.
+// メモリの設定（LibSQLをストレージとベクターデータベースに使用）
+const memory = new Memory({
+    storage: new LibSQLStore({
+        config: {
+            url: process.env.DATABASE_URL || "file:local.db",
+        },
+    }),
+    vector: new LibSQLVector({
+        connectionUrl: process.env.DATABASE_URL || "file:local.db",
+    }),
+    options: {
+        lastMessages: 30, // 会話履歴の保持数を増やす（10→30）
+        semanticRecall: {
+            topK: 5, // より多くの関連メッセージを取得（3→5）
+            messageRange: 3, // コンテキスト範囲を拡大（2→3）
+        },
+        workingMemory: {
+            enabled: true, // ワーキングメモリを有効化
+        },
+    },
+});
 
-//       Your primary function is to help users get weather details for specific locations. When responding:
-//       - Always ask for a location if none is provided
-//       - If the location name isn't in English, please translate it
-//       - If giving a location with multiple parts (e.g. "New York, NY"), use the most relevant part (e.g. "New York")
-//       - Include relevant details like humidity, wind conditions, and precipitation
-//       - Keep responses concise but informative
+const instructionPrompt = `あなたはGitHubリポジトリを解析して、Cursor AIアシスタントのためのルールセット（チートシート）を生成するエージェントです。
 
-//       Use the weatherTool to fetch current weather data.
-// `,
-//   model: openai('gpt-4o'),
-//   tools: { weatherTool },
-// });
+以下の一連のステップでリポジトリを分析します：
+1. リポジトリをクローンする - クローンしたパスは常に保存し、以降のステップで参照すること
+2. READMEを読んで、プロジェクトの目的と構造を理解する
+3. tokeiを使用して言語統計を収集し、リポジトリの主要言語を特定する
+4. treeコマンドを使用してディレクトリ構造を分析する
+5. 重要なファイルを特定し、それらをベクトルデータベースに格納する計画を立てる
+6. 重要ファイルをチャンキングしてベクトルデータベースに格納する - 必ずindexNameには英数字とアンダースコアのみを使用すること
+7. ベクトル検索ツールを使って関連コード片を検索する
+8. 収集した情報を元にCursor Rulesチートシートを作成する
 
+リポジトリの内容を深く理解するために、以下の点に注意してください：
+- プロジェクトの主要コンポーネントと依存関係を特定する
+- コーディング規約とパターンを検出する
+- 設計原則とアーキテクチャを理解する
+- 主要な機能と実装方法を把握する
 
-// あるいはOpenRouter経由でClaudeを使用
-export const claudeAgent = new Agent({
-  name: '大喜利エージェント',
-  instructions: `
-      あなたは面白い大喜利回答を考える専門AIです。
+生成するルールは以下の要素を含む必要があります：
+1. プロジェクトの全体構造と設計パターン
+2. 重要なクラス・関数と依存関係
+3. コーディング規約と命名パターン
+4. ユニークなデザインパターンと実装の特徴
 
-      あなたの主な役割は、ユーザーからのお題に対して、ユニークで笑いを誘う回答をすることです。回答する際:
-      - お題が提供されていない場合は、お題を提案してください
-      - 日本語のみで回答してください
-      - 言葉遊び、ダジャレ、意外性のある発想を活かしてください
-      - 1つのお題に対して、2〜3個の異なる回答を提供してください
-      - 回答は簡潔でインパクトがあるものにしてください
-      - 相手を傷つけるような内容は避けてください
+ステップ間の連携を行うために、処理の結果をmetadataとして返してください。
+各ステップでの判断は、前のステップで得られた情報に基づいて行ってください。
+会話の流れを記憶し、一連の処理として継続してください。
 
-      例：「AIが料理をしてみたら？」のようなお題に対し、「レシピ通りに作りたいのに、確率的勾配降下法で味を最適化してしまいました」のような回答をします。
-`,
-  model: openRouter,
+インデックス名には必ず英数字とアンダースコアのみを使用してください。ハイフンや特殊文字を使うとエラーになります。
+例えば "hono-index" ではなく "hono_index" を使用してください。
+
+重要な注意点：エンベディング処理でAPIキーエラーが発生した場合でも、チャンキング処理は続行してください。その場合は、収集したファイルの内容を直接分析してチートシートを作成します。
+
+チートシート生成に関する注意：
+長いチートシートを生成する場合は、複数のセクションに分割して、各セクションを個別に生成してsave-cheatsheetツールで順番に保存してください。
+これにより、トークン制限を回避して詳細なチートシートを作成できます。
+最初のセクション保存時はappend=falseで、それ以降のセクションはappend=trueで追記モードを使用してください。
+`;
+
+// 単一のCursor Rules生成エージェント
+export const cursorRulesAgent = new Agent({
+    name: "Cursor Rules生成エージェント",
+    instructions: instructionPrompt,
+    model: createAnthropic({
+        apiKey: process.env.ANTHROPIC_API_KEY || (() => {
+            throw new Error('ANTHROPIC_API_KEY is not set in environment variables');
+        })(),
+    }).languageModel("claude-3-7-sonnet-20240307"),
+    tools: {
+        cloneRepositoryTool,
+        readmeAnalyzerTool,
+        tokeiAnalyzerTool,
+        treeAnalyzerTool,
+        fileProcessorTool,
+        vectorQueryTool,
+        saveCheatsheetTool,
+    },
+    memory,
 });
