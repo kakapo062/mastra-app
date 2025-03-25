@@ -1,5 +1,7 @@
 // GitHubツール
 export { cloneRepositoryTool } from "./github/cloneRepository";
+export { getPullRequestTool } from "./github/getPullRequest";
+export { getPrFileTool } from "./github/getPrFiles";
 
 // Git関連ツール
 export { gitDiffTool } from "./gitDiffTool";

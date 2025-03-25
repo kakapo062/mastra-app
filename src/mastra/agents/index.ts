@@ -11,10 +11,13 @@ import {
     vectorQueryTool,
     saveCheatsheetTool,
     gitDiffTool,
+    getPullRequestTool,
+    getPrFileTool,
 } from "../tools";
-import { claude } from "../models";
+import { google, claude } from "../models";
 import { createAnthropic } from "@ai-sdk/anthropic";
 export { codeReviewAgent } from "./codeReviewAgent";
+export { prReviewAgent } from "./prReviewAgent";
 
 // メモリの設定（LibSQLをストレージとベクターデータベースに使用）
 const memory = new Memory({
@@ -81,11 +84,7 @@ const instructionPrompt = `あなたはGitHubリポジトリを解析して、Cu
 export const cursorRulesAgent = new Agent({
     name: "Cursor Rules生成エージェント",
     instructions: instructionPrompt,
-    model: createAnthropic({
-        apiKey: process.env.ANTHROPIC_API_KEY || (() => {
-            throw new Error('ANTHROPIC_API_KEY is not set in environment variables');
-        })(),
-    }).languageModel("claude-3-7-sonnet-20240307"),
+    model: claude,
     tools: {
         cloneRepositoryTool,
         readmeAnalyzerTool,

@@ -18,6 +18,7 @@
     "@mastra/core": "^0.6.4",
     "@mastra/memory": "^0.2.5",
     "@mastra/rag": "^0.1.13",
+    "@octokit/rest": "^20.1.2",
     "mastra": "^0.4.3",
     "zod": "^3.24.2"
   },
