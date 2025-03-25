@@ -17,7 +17,7 @@ export const anthropicProvider = createAnthropic({
 });
 
 // Claude 3.7 Sonnetモデルのインスタンス（直接APIを使用）
-export const claude = anthropicProvider.languageModel("claude-3-7-sonnet-20240307");
+export const claude = anthropicProvider.languageModel("claude-3-7-sonnet-20250219");
 
 // OpenRouter経由でのモデル利用設定
 export const openRouter = createOpenAI({

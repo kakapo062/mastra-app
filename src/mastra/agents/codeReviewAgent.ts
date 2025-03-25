@@ -1,6 +1,7 @@
 import { Agent } from '@mastra/core/agent';
 import { gitDiffTool } from '../tools/gitDiffTool';
 import { createAnthropic } from '@ai-sdk/anthropic';
+import { claude } from '../models';
 
 export const codeReviewAgent = new Agent({
   name: 'Code Review Agent',
@@ -49,10 +50,6 @@ export const codeReviewAgent = new Agent({
     
     レビューは日本語で行い、肯定的なフィードバックも含めてください。
   `,
-  model: createAnthropic({
-    apiKey: process.env.ANTHROPIC_API_KEY || (() => {
-      throw new Error('ANTHROPIC_API_KEY is not set in environment variables');
-    })(),
-  }).languageModel("claude-3-7-sonnet-20240307"),
+  model: claude,
   tools: { gitDiffTool },
 }); 
